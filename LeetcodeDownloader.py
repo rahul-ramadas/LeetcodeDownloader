@@ -121,7 +121,8 @@ def main(path):
     pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(problems)).start()
     solved_count = 0
 
-    os.makedirs(path)
+    if not os.path.exists(path):
+        os.makedirs(path)
 
     for solved in pool.imap_unordered(functools.partial(process_problem, path), problems):
         solved_count += solved
