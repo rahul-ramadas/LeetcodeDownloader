@@ -90,6 +90,7 @@ def get_submission_code(submission_id):
     lang = match.group(1)
     code = match.group(2)
     code = code.encode("utf-8").decode("unicode-escape")
+    code = code.replace("\r\n", "\n")
 
     return (lang, code)
 
