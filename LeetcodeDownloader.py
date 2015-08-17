@@ -85,7 +85,7 @@ def get_submission_code(submission_id):
 
     script_with_code = soup.find("script", string=re.compile(r"scope\.code\."))
 
-    regex = r"scope\.code\.(python|cpp) = '(.+)'"
+    regex = r"scope\.code\.(python|cpp|c) = '(.+)'"
     match = re.search(regex, script_with_code.string)
     lang = match.group(1)
     code = match.group(2)
@@ -106,7 +106,7 @@ def process_problem(path, problem_name):
 
     for id in submission_ids:
         lang, code = get_submission_code(id)
-        ext = {"cpp": "cpp", "python": "py"}[lang]
+        ext = {"cpp": "cpp", "c": "c", "python": "py"}[lang]
         filename = "Solution.{}.{}".format(id, ext)
         with open(os.path.join(prob_dir, filename), "w") as f:
             f.write(code)
