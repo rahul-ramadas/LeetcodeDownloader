@@ -7,6 +7,7 @@ import getpass
 from progressbar import ProgressBar, Percentage, Bar
 import argparse
 import functools
+import glob
 
 
 leetcode_session = None
@@ -98,20 +99,33 @@ def get_submission_code(submission_id):
 def process_problem(path, problem_name):
     submission_ids = get_accepted_submissions(problem_name)
     if not submission_ids:
-        return False
+        return (0, 0)
 
     prob_dir = os.path.join(path, problem_name)
     if not os.path.exists(prob_dir):
         os.mkdir(prob_dir)
 
+    ac_submissions = len(submission_ids)
+    new_submissions = 0
+
     for id in submission_ids:
+        fn_pattern = os.path.join(prob_dir, "Solution.{}.*".format(id))
+        fn_matches = glob.glob(fn_pattern)
+        if len(fn_matches) > 1:
+            raise RuntimeError("More than one file with the same submission ID")
+
+        if len(fn_matches) == 1:
+            continue
+
+        new_submissions += 1
+
         lang, code = get_submission_code(id)
         ext = {"cpp": "cpp", "c": "c", "python": "py"}[lang]
         filename = "Solution.{}.{}".format(id, ext)
         with open(os.path.join(prob_dir, filename), "w") as f:
             f.write(code)
 
-    return True
+    return (ac_submissions, new_submissions)
 
 
 def main(path):
@@ -120,17 +134,24 @@ def main(path):
     init_leetcode_session(username, password)
     problems = get_unlocked_problem_names()
     pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(problems)).start()
-    solved_count = 0
 
     if not os.path.exists(path):
         os.makedirs(path)
 
-    for solved in pool.imap_unordered(functools.partial(process_problem, path), problems):
-        solved_count += solved
+    total_ac_count = 0
+    total_new_count = 0
+    solved_count = 0
+
+    for ac_count, new_count in pool.imap_unordered(functools.partial(process_problem, path), problems):
+        solved_count += 1 if ac_count else 0
+        total_ac_count += ac_count
+        total_new_count += new_count
         pbar.update(pbar.currval + 1)
     pbar.finish()
 
     print("Solved: {}".format(solved_count))
+    print("Total AC submissions: {}".format(total_ac_count))
+    print("New solutions: {}".format(total_new_count))
     pool.close()
     pool.join()
 
