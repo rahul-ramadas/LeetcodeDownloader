@@ -1,13 +1,13 @@
 from bs4 import BeautifulSoup
-import requests
-import re
+from collections import defaultdict
 from multiprocessing.dummy import Pool as ThreadPool
-import os
-import getpass
 from progressbar import ProgressBar, Percentage, Bar
 import argparse
-import functools
+import getpass
 import glob
+import os
+import re
+import requests
 
 
 leetcode_session = None
@@ -38,48 +38,6 @@ def init_leetcode_session(username, password):
     leetcode_session = session
 
 
-def get_unlocked_problem_names():
-    response = leetcode_session.get("https://leetcode.com/problemset/algorithms/")
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    problems_list = []
-
-    problems_div = soup.find("div", id="problemListRow")
-    problems_table = problems_div.find("tbody")
-
-    for problem_link in problems_table("a"):
-        lock_icon = problem_link.find_next_sibling("i", class_="fa fa-lock")
-        if lock_icon is not None:
-            continue
-
-        problem_name = problem_link["href"][len("/problems/"):-1]
-        problems_list.append(problem_name)
-
-    return problems_list
-
-
-def get_accepted_submissions(problem_name):
-    response = leetcode_session.get(
-            "https://leetcode.com/problems/{}/submissions/".format(problem_name))
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    submissions_table = soup.find("table", id="result_testcases")
-    if submissions_table is None:
-        return []
-
-    table_body = submissions_table.find("tbody")
-
-    submission_ids = []
-
-    for ac_submission in table_body.find_all(
-            "a", href=re.compile("/submissions/detail/"), string=re.compile("Accepted")):
-        id = ac_submission["href"][len("/submissions/detail/"):-1]
-        submission_ids.append(id)
-
-    return submission_ids
-
-
 def get_submission_code(submission_id):
     response = leetcode_session.get("https://leetcode.com/submissions/detail/" + submission_id)
     soup = BeautifulSoup(response.text, "html.parser")
@@ -96,62 +54,126 @@ def get_submission_code(submission_id):
     return (lang, code)
 
 
-def process_problem(path, problem_name):
-    submission_ids = get_accepted_submissions(problem_name)
-    if not submission_ids:
-        return (0, 0)
+def get_ac_submissions_on_page(page_no):
+    response = leetcode_session.get("https://leetcode.com/submissions/{}/".format(page_no))
 
-    prob_dir = os.path.join(path, problem_name)
-    if not os.path.exists(prob_dir):
-        os.mkdir(prob_dir)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    ac_submissions = len(submission_ids)
-    new_submissions = 0
+    submissions_table = soup.find("table", id="result_testcases")
+    if submissions_table is None:
+        return {}
 
-    for id in submission_ids:
-        fn_pattern = os.path.join(prob_dir, "Solution.{}.*".format(id))
-        fn_matches = glob.glob(fn_pattern)
-        if len(fn_matches) > 1:
-            raise RuntimeError("More than one file with the same submission ID")
+    table_body = submissions_table.find("tbody")
 
-        if len(fn_matches) == 1:
-            continue
+    ac_submissions = defaultdict(set)
 
-        new_submissions += 1
+    for ac_submission in table_body.find_all(
+            "a", href=re.compile("/submissions/detail/"), string=re.compile("Accepted")):
 
-        lang, code = get_submission_code(id)
-        ext = {"cpp": "cpp", "c": "c", "python": "py"}[lang]
-        filename = "Solution.{}.{}".format(id, ext)
-        with open(os.path.join(prob_dir, filename), "w") as f:
-            f.write(code)
+        id = ac_submission["href"][len("/submissions/detail/"):-1]
 
-    return (ac_submissions, new_submissions)
+        problem_link = ac_submission.find_previous("a")
+        problem_name = problem_link["href"][len("/problems/"):-1]
+
+        ac_submissions[problem_name].add(id)
+
+    return ac_submissions
+
+
+def get_total_submissions():
+    response = leetcode_session.get("https://leetcode.com/progress/")
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    script = soup.find("script", string=re.compile(r"total_submissions"))
+
+    regex = r"total_submissions.+number: (\d+)"
+    match = re.search(regex, script.string, re.DOTALL)
+    total_submissions = match.group(1)
+
+    return int(total_submissions)
 
 
 def main(path):
     username = input("Username: ")
     password = getpass.getpass()
+    print("Logging in to LeetCode...")
     init_leetcode_session(username, password)
-    problems = get_unlocked_problem_names()
-    pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(problems)).start()
 
-    if not os.path.exists(path):
-        os.makedirs(path)
+    # Get the total number of submissions made
+    print("Getting total number of submissions...", end='')
+    total_submissions = get_total_submissions()
+    print(total_submissions)
 
-    total_ac_count = 0
-    total_new_count = 0
-    solved_count = 0
+    # Figure out how many pages of submissions there are
+    SUBMISSIONS_PER_PAGE = 20
+    num_pages = (total_submissions + SUBMISSIONS_PER_PAGE - 1) // SUBMISSIONS_PER_PAGE
 
-    for ac_count, new_count in pool.imap_unordered(functools.partial(process_problem, path), problems):
-        solved_count += 1 if ac_count else 0
-        total_ac_count += ac_count
-        total_new_count += new_count
+    # Fetch in parallel all the submissions
+    all_ac_submissions = defaultdict(set)
+    print("Getting submissions details...")
+    pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=num_pages).start()
+    for ac_submissions in pool.imap_unordered(get_ac_submissions_on_page, range(1, num_pages + 1)):
+        for prob, subs in ac_submissions.items():
+            all_ac_submissions[prob].update(subs)
         pbar.update(pbar.currval + 1)
     pbar.finish()
 
-    print("Solved: {}".format(solved_count))
-    print("Total AC submissions: {}".format(total_ac_count))
-    print("New solutions: {}".format(total_new_count))
+    # Create all the directories
+    if not os.path.exists(path):
+        os.makedirs(path)
+    for problem in all_ac_submissions:
+        prob_dir = os.path.join(path, problem)
+        if not os.path.exists(prob_dir):
+            os.mkdir(prob_dir)
+
+    total_solved_problems = len(all_ac_submissions)
+
+    # Filter out submissions for which we already have the code
+    remove_problems = []
+    for prob, subs in all_ac_submissions.items():
+        remove_subs = set()
+        prob_dir = os.path.join(path, prob)
+        for sub in subs:
+            fn_pattern = os.path.join(prob_dir, "Solution.{}.*".format(sub))
+            fn_matches = glob.glob(fn_pattern)
+            if len(fn_matches) > 1:
+                raise RuntimeError("More than one file with the same submission ID")
+
+            if len(fn_matches) == 1:
+                remove_subs.add(sub)
+
+        subs -= remove_subs
+        if not subs:
+            remove_problems.append(prob)
+
+    for prob in remove_problems:
+        del all_ac_submissions[prob]
+
+    # Fetch the code for new submissions in parallel
+    print("Downloading submissions...")
+
+    def fetch_code(problem_id):
+        problem, id = problem_id
+        lang, code = get_submission_code(id)
+        return problem, id, lang, code
+
+    problem_id = [(prob, id) for (prob, subs) in all_ac_submissions.items() for id in subs]
+
+    pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=max(1, len(problem_id))).start()
+
+    for problem, id, lang, code in pool.imap_unordered(fetch_code, problem_id):
+        ext = {"cpp": "cpp", "c": "c", "python": "py"}[lang]
+        filename = "Solution.{}.{}".format(id, ext)
+        prob_dir = os.path.join(path, problem)
+        with open(os.path.join(prob_dir, filename), "w") as f:
+            f.write(code)
+        pbar.update(pbar.currval + 1)
+    pbar.finish()
+
+    print("Solved: {}".format(total_solved_problems))
+    print("New solutions: {}".format(len(problem_id)))
+    print("Done.")
     pool.close()
     pool.join()
 
