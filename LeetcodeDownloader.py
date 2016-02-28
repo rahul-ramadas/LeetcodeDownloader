@@ -42,12 +42,15 @@ def get_submission_code(submission_id):
     response = leetcode_session.get("https://leetcode.com/submissions/detail/" + submission_id)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    script_with_code = soup.find("script", string=re.compile(r"scope\.code\."))
+    script_with_code = soup.find("script", string=re.compile(r"submissionCode"))
 
-    regex = r"scope\.code\.(python|cpp|c) = '(.+)'"
-    match = re.search(regex, script_with_code.string)
-    lang = match.group(1)
-    code = match.group(2)
+    lang_regex = r"getLangDisplay: '(python|cpp|c)'"
+    lang_match = re.search(lang_regex, script_with_code.string)
+    lang = lang_match.group(1)
+
+    code_regex = r"submissionCode: '([^']+)'"
+    code_match = re.search(code_regex, script_with_code.string)
+    code = code_match.group(1)
     code = code.encode("utf-8").decode("unicode-escape")
     code = code.replace("\r\n", "\n")
 
@@ -87,7 +90,7 @@ def get_total_submissions():
 
     script = soup.find("script", string=re.compile(r"total_submissions"))
 
-    regex = r"total_submissions.+number: (\d+)"
+    regex = r"total_submissions: (\d+)"
     match = re.search(regex, script.string, re.DOTALL)
     total_submissions = match.group(1)
 
