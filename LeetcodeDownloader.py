@@ -62,7 +62,7 @@ def get_ac_submissions_on_page(page_no):
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    submissions_table = soup.find("table", id="result_testcases")
+    submissions_table = soup.find("table", id="result-testcases")
     if submissions_table is None:
         return {}
 
