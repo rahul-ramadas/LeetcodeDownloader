@@ -169,7 +169,7 @@ def main(path):
         ext = {"cpp": "cpp", "c": "c", "python": "py"}[lang]
         filename = "Solution.{}.{}".format(id, ext)
         prob_dir = os.path.join(path, problem)
-        with open(os.path.join(prob_dir, filename), "w") as f:
+        with open(os.path.join(prob_dir, filename), "w", encoding="utf-8") as f:
             f.write(code)
         pbar.update(pbar.currval + 1)
     pbar.finish()
