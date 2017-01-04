@@ -166,7 +166,7 @@ def main(path):
     pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=max(1, len(problem_id))).start()
 
     for problem, id, lang, code in pool.imap_unordered(fetch_code, problem_id):
-        ext = {"cpp": "cpp", "c": "c", "python": "py","java": "java","csharp": "cs"}[lang]
+        ext = {"cpp": "cpp", "c": "c", "python": "py", "java": "java", "csharp": "cs"}[lang]
         filename = "Solution.{}.{}".format(id, ext)
         prob_dir = os.path.join(path, problem)
         with open(os.path.join(prob_dir, filename), "w", encoding="utf-8") as f:
