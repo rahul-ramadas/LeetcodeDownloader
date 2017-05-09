@@ -9,6 +9,7 @@ import os
 import re
 import requests
 
+SUBMISSIONS_PER_PAGE = 20
 
 leetcode_session = None
 pool = ThreadPool(32)
@@ -58,25 +59,18 @@ def get_submission_code(submission_id):
 
 
 def get_ac_submissions_on_page(page_no):
-    response = leetcode_session.get("https://leetcode.com/submissions/{}/".format(page_no))
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    submissions_table = soup.find("table", id="result-testcases")
-    if submissions_table is None:
-        return {}
-
-    table_body = submissions_table.find("tbody")
+    offset = (page_no - 1) * SUBMISSIONS_PER_PAGE
+    response = leetcode_session.get(
+        "https://leetcode.com/api/submissions/?offset={}&limit={}".format(offset, SUBMISSIONS_PER_PAGE))
 
     ac_submissions = defaultdict(set)
 
-    for ac_submission in table_body.find_all(
-            "a", href=re.compile("/submissions/detail/"), string=re.compile("Accepted")):
+    for ac_submission in (submission for submission in response.json()["submissions_dump"]
+                          if submission["status_display"] == "Accepted"):
 
-        id = ac_submission["href"][len("/submissions/detail/"):-1]
+        id = ac_submission["url"][len("/submissions/detail/"):-1]
 
-        problem_link = ac_submission.find_previous("a")
-        problem_name = problem_link["href"][len("/problems/"):-1]
+        problem_name = ac_submission["title"]
 
         ac_submissions[problem_name].add(id)
 
@@ -109,7 +103,6 @@ def main(path):
     print(total_submissions)
 
     # Figure out how many pages of submissions there are
-    SUBMISSIONS_PER_PAGE = 20
     num_pages = (total_submissions + SUBMISSIONS_PER_PAGE - 1) // SUBMISSIONS_PER_PAGE
 
     # Fetch in parallel all the submissions
