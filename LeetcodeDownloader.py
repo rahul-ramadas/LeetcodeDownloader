@@ -8,6 +8,8 @@ import glob
 import os
 import re
 import requests
+import time
+
 
 SUBMISSIONS_PER_PAGE = 20
 
@@ -108,12 +110,15 @@ def main(path):
     # Fetch in parallel all the submissions
     all_ac_submissions = defaultdict(set)
     print("Getting submissions details...")
+    start_time = time.perf_counter()
     pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=num_pages).start()
     for ac_submissions in pool.imap_unordered(get_ac_submissions_on_page, range(1, num_pages + 1)):
         for prob, subs in ac_submissions.items():
             all_ac_submissions[prob].update(subs)
         pbar.update(pbar.currval + 1)
     pbar.finish()
+    stop_time = time.perf_counter()
+    print("Time taken: {:.2f} seconds\n".format(stop_time - start_time))
 
     # Create all the directories
     if not os.path.exists(path):
@@ -148,6 +153,7 @@ def main(path):
 
     # Fetch the code for new submissions in parallel
     print("Downloading submissions...")
+    start_time = time.perf_counter()
 
     def fetch_code(problem_id):
         problem, id = problem_id
@@ -166,6 +172,8 @@ def main(path):
             f.write(code)
         pbar.update(pbar.currval + 1)
     pbar.finish()
+    stop_time = time.perf_counter()
+    print("Time taken: {:.2f} seconds\n".format(stop_time - start_time))
 
     print("Solved: {}".format(total_solved_problems))
     print("New solutions: {}".format(len(problem_id)))
